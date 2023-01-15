@@ -1,32 +1,24 @@
-interface InputItem {
+interface TokenItem {
   type: string;
   value: string
 }
 
+interface Ast<T = any[]> {
+  type: string;
+  body: T extends TokenItem[] ? TokenItem[] : AstBody[]
+}
+
 interface AstBody {
   type: string;
-  name?: string;
-  params?: any;
-  value?: string;
+  name: string;
+  params: any;
 }
 
-interface ParserResult extends AstBody {
-  body: AstBody[];
-}
+// 假设传入tokenizer的值: (add 2 (subtract 4 2))
 
-interface Expression {
-  type: string;
-  callee: {
-    type: string;
-    name?: string;
-  }
-  arguments: unknown[]
-}
-
-
-export function Tokenizer(input: String): InputItem[] {
+export function tokenizer(input: string): TokenItem[] {
   var current = 0
-  var tokens: InputItem[] = []
+  var tokens: TokenItem[] = []
 
   // 用于判断用的
   var WHITE_SPACE = /\s/
@@ -53,12 +45,24 @@ export function Tokenizer(input: String): InputItem[] {
       current++;
       continue;
     }
-    // 空格就跳过
+    if (char === '"') {
+      let value = ""
+      char = input[current++]
+      while (char != '"') {
+        value += char
+        char = input[++current]
+      }
+      tokens.push({
+        type: 'string',
+        value
+      })
+      char = input[++current]
+      continue;
+    }
     if (WHITE_SPACE.test(char)) {
       current++;
       continue;
     }
-    // 数字就是参数
     if (NUMBERS.test(char)) {
       let value = ''
 
@@ -73,7 +77,6 @@ export function Tokenizer(input: String): InputItem[] {
       })
       continue
     }
-    // 如果是文字我们就判断为函数
     if (LETTERS.test(char)) {
       let value = ''
       while (LETTERS.test(char)) {
@@ -95,158 +98,57 @@ export function Tokenizer(input: String): InputItem[] {
   return tokens
 }
 
-export function Parser(tokens: InputItem[]): ParserResult {
+// 例如生成的tokens的值会是 
+// [
+//   { type: 'paren', value: '(' },
+//   { type: 'name', value: 'add' },
+//   { type: 'number', value: '2' },
+//   { type: 'paren', value: '(' },
+//   { type: 'name', value: 'subtract' },
+//   { type: 'number', value: '4' },
+//   { type: 'number', value: '2' },
+//   { type: 'paren', value: ')' },
+//   { type: 'paren', value: ')' }
+// ]
+export function parser(tokens: TokenItem[]): Ast {
   var current = 0
-
-  function walk(): AstBody {
-    var token = tokens[current]
-
-    if (token.type === 'number') {
-      current++
-      return {
-        type: 'NumberLiteral',
-        value: token.value
-      }
-    }
-    if (
-      token.type === 'paren' &&
-      token.value === '('
-    ) {
-      token = tokens[++current]
-      var node: AstBody = {
-        type: 'CallExpression',
-        name: token.value,
-        params: []
-      }
-
-      token = tokens[++current]
-      while (
-        (token.type !== 'paren') ||
-        (token.type === 'paren' && token.value !== ')')
-      ) {
-        node.params.push(walk())
-        token = tokens[current]
-      }
-
-      current++
-
-      return node
-    }
-    throw new TypeError(token.type)
-  }
-
-  var ast: ParserResult = {
+  var ast: Ast = {
     type: 'Program',
     body: []
   }
 
-  while (current < tokens.length) {
-    ast.body.push(walk())
+  function go() {
+
   }
 
   return ast
 }
 
-export function Traverser(ast: ParserResult, vistor: any) {
-  function traverseArray(array: any[], parent: any) {
-    array.forEach(function (child) {
-      traverseNode(child, parent)
-    })
-  }
+// 那么经过oarser的值就会是: 
+// {
+//   type: 'Program',
+//   body: [{
+//     type: 'CallExpression',
+//     name: 'add',
+//     params: [{
+//       type: 'NumberLiteral',
+//       value: '2'
+//     }, {
+//       type: 'CallExpression',
+//       name: 'subtract',
+//       params: [{
+//         type: 'NumberLiteral',
+//         value: '4'
+//       }, {
+//         type: 'NumberLiteral',
+//         value: '2'
+//       }]
+//     }]
+//   }]
+// }
 
-  function traverseNode(node: ParserResult, parent: any) {
-    var method = vistor[node.type]
-
-    if (method) {
-      method(node, parent)
-    }
-    switch (node.type) {
-      case 'Program':
-        traverseArray(node.body, node);
-        break;
-      case 'CallExpression':
-        traverseArray(node.params, node)
-        break;
-      case 'NumberLiteral':
-        break;
-      default:
-        throw new TypeError(node.type);
-    }
-  }
-  traverseNode(ast, null)
-}
-
-// 对ast进行转换
-export function Transformer(ast: any) {
-  var newAst = {
-    type: 'Program',
-    body: []
-  }
-
-  ast._context = newAst.body
-
-  Traverser(ast, {
-    NumberLiteral: function (node: ParserResult, parent: any) {
-      parent._context.push({
-        type: 'NumberLiteral',
-        value: node.value
-      })
-    },
-    CallExpression: function (node: any, parent: any) {
-      var expression = {
-        type: 'CallExpression',
-        callee: {
-          type: 'Identifier',
-          name: node.name
-        },
-        arguments: []
-      }
-
-      node._context = expression.arguments
-
-      if (parent.type !== 'CallExpression') {
-        expression = {
-          type: 'ExpressionStatement',
-          expression
-        }
-      }
-      parent._context.push(expression)
-    }
-  })
-  return newAst
-}
-
-export function CodeGenerator(node: any): any {
-  switch (node.type) {
-    case 'Program':
-      return node.body.map(CodeGenerator).join('\n');
-    case 'ExpressionStatement':
-      return (
-        CodeGenerator(node.expression) +
-        ';'
-      );
-    case 'CallExpression':
-      return (
-        CodeGenerator(node.callee) +
-        '(' +
-        node.arguments.map(CodeGenerator)
-          .join(', ') +
-        ')'
-      );
-    case 'Identifier':
-      return node.name;
-    case 'NumberLiteral':
-      return node.value;
-    default:
-      throw new TypeError(node.type);
-  }
-}
 
 export function compiler(input: string) {
-  var tokens = Tokenizer(input)
-  var ast = Parser(tokens)
-  var newAst = Transformer(ast)
-  var output = CodeGenerator(newAst)
-
-  return output
+  var tokens = tokenizer(input)
+  var ast = parser(tokens)
 }
