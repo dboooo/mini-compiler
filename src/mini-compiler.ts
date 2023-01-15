@@ -11,8 +11,19 @@ interface AstBody {
 }
 
 interface ParserResult extends AstBody {
-  body: AstBody[]
+  body: AstBody[];
 }
+
+interface Expression {
+  type: string;
+  callee: {
+    type: string;
+    name?: string;
+  }
+  arguments: unknown[]
+}
+
+
 export function Tokenizer(input: String): InputItem[] {
   var current = 0
   var tokens: InputItem[] = []
@@ -136,14 +147,14 @@ export function Parser(tokens: InputItem[]): ParserResult {
   return ast
 }
 
-export function Traverser(ast: ParserResult, vistor) {
+export function Traverser(ast: ParserResult, vistor: any) {
   function traverseArray(array: any[], parent: any) {
     array.forEach(function (child) {
       traverseNode(child, parent)
     })
   }
 
-  function traverseNode(node: ParserResult, parent) {
+  function traverseNode(node: ParserResult, parent: any) {
     var method = vistor[node.type]
 
     if (method) {
@@ -156,7 +167,7 @@ export function Traverser(ast: ParserResult, vistor) {
       case 'CallExpression':
         traverseArray(node.params, node)
         break;
-      case 'NumberLiterals':
+      case 'NumberLiteral':
         break;
       default:
         throw new TypeError(node.type);
@@ -175,13 +186,13 @@ export function Transformer(ast: any) {
   ast._context = newAst.body
 
   Traverser(ast, {
-    NumberLiteral: function (node, parent) {
+    NumberLiteral: function (node: ParserResult, parent: any) {
       parent._context.push({
         type: 'NumberLiteral',
         value: node.value
       })
     },
-    CallExpression: function (node, parent) {
+    CallExpression: function (node: any, parent: any) {
       var expression = {
         type: 'CallExpression',
         callee: {
@@ -196,7 +207,7 @@ export function Transformer(ast: any) {
       if (parent.type !== 'CallExpression') {
         expression = {
           type: 'ExpressionStatement',
-          expression: expression
+          expression
         }
       }
       parent._context.push(expression)
@@ -231,7 +242,7 @@ export function CodeGenerator(node: any): any {
   }
 }
 
-export function compiler(input) {
+export function compiler(input: string) {
   var tokens = Tokenizer(input)
   var ast = Parser(tokens)
   var newAst = Transformer(ast)
