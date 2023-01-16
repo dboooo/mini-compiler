@@ -6,7 +6,7 @@ describe('Compiler', () => {
   const tokens = compiler.tokenizer(origin)
   const ast = compiler.parser(tokens)
   // tokens
-  test('tokens', async () => {
+  test('tokens', () => {
     const expected = [
       { type: 'paren', value: '(' },
       { type: 'name', value: 'add' },
@@ -18,9 +18,9 @@ describe('Compiler', () => {
       { type: 'paren', value: ')' },
       { type: 'paren', value: ')' }
     ]
-    await expect(tokens).toEqual(expected)
+    expect(tokens).toEqual(expected)
   })
-  test('parser', async () => {
+  test('parser', () => {
     const expected = {
       type: 'Program',
       body: [{
@@ -42,46 +42,41 @@ describe('Compiler', () => {
         }]
       }]
     }
-    await expect(ast).toEqual(expected)
+    expect(ast).toEqual(expected)
   })
-  // test('transformer', async () => {
-  //   const newAst = compiler.Transformer(ast)
-  //   const expected = {
-  //     type: 'Program',
-  //     body: [{
-  //       type: 'ExpressionStatement',
-  //       expression: {
-  //         type: 'CallExpression',
-  //         callee: {
-  //           type: 'Identifier',
-  //           name: 'add'
-  //         },
-  //         arguments: [{
-  //           type: 'NumberLiteral',
-  //           value: '2'
-  //         }, {
-  //           type: 'CallExpression',
-  //           callee: {
-  //             type: 'Identifier',
-  //             name: 'subtract'
-  //           },
-  //           arguments: [{
-  //             type: 'NumberLiteral',
-  //             value: '4'
-  //           }, {
-  //             type: 'NumberLiteral',
-  //             value: '2'
-  //           }]
-  //         }]
-  //       }
-  //     }]
-  //   }
+  test('transformer', () => {
+    const newAst = compiler.transformer(ast)
+    const expected = {
+      type: 'Program',
+      body: [{
+        type: 'ExpressionStatement',
+        expression: {
+          type: 'CallExpression',
+          callee: {
+            type: 'Identifier',
+            name: 'add'
+          },
+          arguments: [{
+            type: 'NumberLiteral',
+            value: '2'
+          }, {
+            type: 'CallExpression',
+            callee: {
+              type: 'Identifier',
+              name: 'subtract'
+            },
+            arguments: [{
+              type: 'NumberLiteral',
+              value: '4'
+            }, {
+              type: 'NumberLiteral',
+              value: '2'
+            }]
+          }]
+        }
+      }]
+    }
 
-  //   await expect(newAst).toEqual(expected)
-  // })
-  // test('codeGenerator', () => {
-  //   const result = compiler.compiler(origin)
-
-  //   expect(result).toEqual("add(2, subtract(4, 2));")
-  // })
+    expect(newAst).toEqual(expected)
+  })
 })

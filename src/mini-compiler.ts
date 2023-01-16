@@ -1,24 +1,69 @@
-interface TokenItem {
-  type: string;
+export enum TokenTypes {
+  Paren = 'paren',
+  Name = 'name',
+  Number = 'number',
+  String = 'string'
+}
+
+export interface Token {
+  type: TokenTypes
   value: string
 }
 
-interface Ast<T = any[]> {
-  type: string;
-  body: T extends TokenItem[] ? TokenItem[] : AstBody[]
+export enum NodeTypes {
+  NumberLiteral = "NumberLiteral",
+  Program = "Program",
+  StringLiteral = "StringLiteral",
+  CallExpression = "CallExpression",
 }
 
-interface AstBody {
-  type: string;
-  name: string;
-  params: any;
+export type ChildNode =
+  | NumberLiteralNode
+  | StringLiteralNode
+  | CallExpressionNode
+
+export interface NumberLiteralNode {
+  type: NodeTypes.NumberLiteral;
+  value: string;
+}
+
+export interface StringLiteralNode {
+  value: string;
+  type: NodeTypes.StringLiteral;
+}
+
+export interface CallExpressionNode {
+  type: NodeTypes.CallExpression
+  name: string
+  params: ChildNode[]
+  context?: ChildNode[]
+}
+
+export interface RootNode {
+  type: NodeTypes.Program
+  body: ChildNode[]
+  context?: ChildNode[]
+}
+
+type ParentNode = RootNode | CallExpressionNode | undefined
+type MethodFn = (node: RootNode | ChildNode, parent: ParentNode) => void
+interface VisitorOpt {
+  enter: MethodFn
+  exit?: MethodFn
+}
+
+export interface Vistor {
+  Program?: VisitorOpt
+  NumberLiteral?: VisitorOpt;
+  CallExpression?: VisitorOpt;
+  StringLiteral?: VisitorOpt;
 }
 
 // 假设传入tokenizer的值: (add 2 (subtract 4 2))
 
-export function tokenizer(input: string): TokenItem[] {
+export function tokenizer(input: string) {
   var current = 0
-  var tokens: TokenItem[] = []
+  var tokens: Token[] = []
 
   // 用于判断用的
   var WHITE_SPACE = /\s/
@@ -31,7 +76,7 @@ export function tokenizer(input: string): TokenItem[] {
 
     if (char === '(') {
       tokens.push({
-        type: 'paren',
+        type: TokenTypes.Paren,
         value: '('
       });
       current++;
@@ -39,7 +84,7 @@ export function tokenizer(input: string): TokenItem[] {
     }
     if (char === ')') {
       tokens.push({
-        type: 'paren',
+        type: TokenTypes.Paren,
         value: ')'
       });
       current++;
@@ -53,7 +98,7 @@ export function tokenizer(input: string): TokenItem[] {
         char = input[++current]
       }
       tokens.push({
-        type: 'string',
+        type: TokenTypes.String,
         value
       })
       char = input[++current]
@@ -72,7 +117,7 @@ export function tokenizer(input: string): TokenItem[] {
       }
 
       tokens.push({
-        type: 'number',
+        type: TokenTypes.Number,
         value
       })
       continue
@@ -84,7 +129,7 @@ export function tokenizer(input: string): TokenItem[] {
         char = input[++current]
       }
       tokens.push({
-        type: 'name',
+        type: TokenTypes.Name,
         value
       });
 
@@ -98,57 +143,166 @@ export function tokenizer(input: string): TokenItem[] {
   return tokens
 }
 
-// 例如生成的tokens的值会是 
-// [
-//   { type: 'paren', value: '(' },
-//   { type: 'name', value: 'add' },
-//   { type: 'number', value: '2' },
-//   { type: 'paren', value: '(' },
-//   { type: 'name', value: 'subtract' },
-//   { type: 'number', value: '4' },
-//   { type: 'number', value: '2' },
-//   { type: 'paren', value: ')' },
-//   { type: 'paren', value: ')' }
-// ]
-export function parser(tokens: TokenItem[]): Ast {
-  var current = 0
-  var ast: Ast = {
-    type: 'Program',
+export function parser(tokens: Token[]) {
+  let current = 0
+  let token = tokens[current]
+  let root: RootNode = {
+    type: NodeTypes.Program,
     body: []
   }
 
-  function go() {
+  function walk(): ChildNode {
+    if (token.type === TokenTypes.Number) {
+      current++
+      return {
+        type: NodeTypes.NumberLiteral,
+        value: token.value
+      }
+    }
+    if (token.type === TokenTypes.String) {
+      current++
+      return {
+        type: NodeTypes.StringLiteral,
+        value: token.value
+      }
+    }
+    if (
+      token.type === TokenTypes.Paren &&
+      token.value === '('
+    ) {
+      token = tokens[++current]
+      let node: CallExpressionNode = {
+        type: NodeTypes.CallExpression,
+        name: token.value,
+        params: []
+      }
+      token = tokens[++current]
+      while (
+        !(token.type === TokenTypes.Paren && token.value === ')')
+      ) {
+        node.params.push(walk())
+        token = tokens[current]
+      }
 
+      current++
+      return node
+    }
+
+    throw new Error("can't find this type: " + token.type)
   }
 
-  return ast
+  while (current < tokens.length) {
+    root.body.push(walk())
+  }
+
+  return root
 }
 
-// 那么经过oarser的值就会是: 
-// {
-//   type: 'Program',
-//   body: [{
-//     type: 'CallExpression',
-//     name: 'add',
-//     params: [{
-//       type: 'NumberLiteral',
-//       value: '2'
-//     }, {
-//       type: 'CallExpression',
-//       name: 'subtract',
-//       params: [{
-//         type: 'NumberLiteral',
-//         value: '4'
-//       }, {
-//         type: 'NumberLiteral',
-//         value: '2'
-//       }]
-//     }]
-//   }]
-// }
+export function traverser(ast: RootNode, vistor: Vistor) {
+  function traverseArray(node: ChildNode[], parent: ParentNode) {
+    node.forEach((child) => {
+      traverNode(child, parent)
+    })
+  }
 
+  function traverNode(node: RootNode | ChildNode, parent?: ParentNode) {
+    // 进入
+    const methods = vistor[node.type]
+
+    if (methods) {
+      methods.enter(node, parent)
+    }
+
+    switch (node.type) {
+      case NodeTypes.Program:
+        traverseArray(node.body, node);
+        break;
+      case NodeTypes.CallExpression:
+        traverseArray(node.params, node);
+        break;
+      case NodeTypes.NumberLiteral:
+        break;
+      default:
+        break;
+    }
+
+    if (methods?.exit && methods) {
+      methods.exit(node, parent)
+    }
+  }
+
+  traverNode(ast)
+}
+
+export function transformer(ast: RootNode) {
+  const newAst = {
+    type: NodeTypes.Program,
+    body: []
+  }
+
+  traverser(ast, {
+    'NumberLiteral': {
+      enter(node, parent) {
+        if (node.type === NodeTypes.NumberLiteral) {
+          parent?.context?.push({
+            type: NodeTypes.NumberLiteral,
+            value: node.value
+          })
+        }
+      }
+    },
+    'CallExpression': {
+      enter(node, parent) {
+        if (node.type === NodeTypes.CallExpression) {
+          let expression: any = {
+            type: "CallExpression",
+            callee: {
+              type: "Identifier",
+              name: node.name,
+            },
+            arguments: [],
+          };
+
+
+          node.context = expression.arguments;
+
+          if (parent?.type !== NodeTypes.CallExpression) {
+            expression = {
+              type: "ExpressionStatement",
+              expression,
+            };
+          }
+
+          parent?.context?.push(expression);
+        }
+      }
+    }
+  }
+  )
+  return newAst
+}
+
+function codeGenerator(node: any): any {
+  switch (node.type) {
+    case "Program":
+      return node.body.map(codeGenerator).join("");
+    case "ExpressionStatement":
+      return codeGenerator(node.expression) + ";";
+    case "NumberLiteral":
+      return node.value;
+    case "CallExpression":
+      return (
+        node.callee.name + "(" + node.arguments.map(codeGenerator).join(", ") + ")"
+      );
+  }
+}
 
 export function compiler(input: string) {
-  var tokens = tokenizer(input)
-  var ast = parser(tokens)
+  let tokens = tokenizer(input);
+  let ast = parser(tokens);
+  let newAst = transformer(ast);
+  let output = codeGenerator(newAst);
+
+  // and simply return the output!
+  return output;
 }
