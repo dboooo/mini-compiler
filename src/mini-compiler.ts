@@ -240,8 +240,10 @@ export function transformer(ast: RootNode) {
     body: []
   }
 
+  ast.context = newAst.body
+
   traverser(ast, {
-    'NumberLiteral': {
+    NumberLiteral: {
       enter(node, parent) {
         if (node.type === NodeTypes.NumberLiteral) {
           parent?.context?.push({
@@ -251,7 +253,7 @@ export function transformer(ast: RootNode) {
         }
       }
     },
-    'CallExpression': {
+    CallExpression: {
       enter(node, parent) {
         if (node.type === NodeTypes.CallExpression) {
           let expression: any = {
@@ -262,8 +264,6 @@ export function transformer(ast: RootNode) {
             },
             arguments: [],
           };
-
-
           node.context = expression.arguments;
 
           if (parent?.type !== NodeTypes.CallExpression) {
@@ -276,9 +276,20 @@ export function transformer(ast: RootNode) {
           parent?.context?.push(expression);
         }
       }
-    }
+    },
+    StringLiteral: {
+      enter(node, parent) {
+        if (node.type === NodeTypes.StringLiteral) {
+          parent?.context?.push({
+            type: NodeTypes.StringLiteral,
+            value: node.value,
+          });
+        }
+      },
+    },
   }
   )
+
   return newAst
 }
 
@@ -290,10 +301,14 @@ function codeGenerator(node: any): any {
       return codeGenerator(node.expression) + ";";
     case "NumberLiteral":
       return node.value;
+    case 'StringLiteral':
+      return '"' + node.value + '"';
     case "CallExpression":
       return (
         node.callee.name + "(" + node.arguments.map(codeGenerator).join(", ") + ")"
       );
+    default:
+      throw new TypeError(node.type);
   }
 }
 

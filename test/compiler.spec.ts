@@ -46,6 +46,7 @@ describe('Compiler', () => {
   })
   test('transformer', () => {
     const newAst = compiler.transformer(ast)
+
     const expected = {
       type: 'Program',
       body: [{
